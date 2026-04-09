@@ -11,50 +11,93 @@ import requests
 USERNAME = "sandrominori50+giorgiofaggiolini@gmail.com"
 PASSWORD = "DDnmVV45!!"
 
-# Browserless (usa una chiave valida dalla tua lista)
-BROWSERLESS_URL = "wss://chrome.browserless.io?token=2UGdbQnmFCJwS9Vd714eb85438cf63d00a8f878a898cfe865"
+# Browserless: usa URL HTTPS con /webdriver (non wss)
+# Sostituisci il token con una delle tue chiavi valide
+BROWSERLESS_URL = "https://chrome.browserless.io/webdriver?token=2UGdbQnmFCJwS9Vd714eb85438cf63d00a8f878a898cfe865"
 
-# Lascia vuoto se non usi 2captcha
+# Chiave per 2captcha (lascia vuota se non la usi)
 CAPTCHA_API_KEY = ""
 # ==================================================
 
 def solve_turnstile(sitekey, page_url):
+    """Risolve Cloudflare Turnstile (opzionale)"""
     if not CAPTCHA_API_KEY:
         return None
+    print("🔑 Tentativo di risolvere Turnstile...")
+    payload = {
+        "key": CAPTCHA_API_KEY,
+        "method": "turnstile",
+        "sitekey": sitekey,
+        "pageurl": page_url,
+        "json": 1
+    }
     try:
-        # ... implementazione (ometto per brevità, ma puoi lasciare quella che avevi)
-        pass
-    except:
-        return None
+        start = time.time()
+        r = requests.post("http://2captcha.com/in.php", data=payload)
+        result = r.json()
+        if result.get("status") == 1:
+            captcha_id = result["request"]
+            for _ in range(30):
+                time.sleep(3)
+                res = requests.get(f"http://2captcha.com/res.php?key={CAPTCHA_API_KEY}&action=get&id={captcha_id}&json=1")
+                if res.json().get("status") == 1:
+                    token = res.json()["request"]
+                    print(f"   ✅ Token ottenuto in {time.time() - start:.1f}s")
+                    return token
+            print("   ❌ Timeout captcha")
+        else:
+            print(f"   ❌ Errore captcha: {result}")
+    except Exception as e:
+        print(f"   ⚠️ Eccezione captcha: {e}")
+    return None
 
 def login():
     print("==================================================")
-    print("🚀 LOGIN CON BROWSERLESS BQL")
+    print("🚀 LOGIN CON BROWSERLESS (via HTTPS)")
     print("==================================================")
     
+    # Opzioni per Chrome in headless
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
     
+    # Connessione a Browserless usando l'endpoint HTTP
     driver = webdriver.Remote(command_executor=BROWSERLESS_URL, options=options)
     
     try:
         driver.get("https://www.easyhits4u.com")
         wait = WebDriverWait(driver, 20)
         
+        # Clicca su Login
         login_btn = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Login")))
         login_btn.click()
         
+        # Inserisci credenziali
         username_field = wait.until(EC.presence_of_element_located((By.NAME, "username")))
         password_field = driver.find_element(By.NAME, "password")
         username_field.send_keys(USERNAME)
         password_field.send_keys(PASSWORD)
         
+        # Gestione Turnstile (se presente)
+        try:
+            turnstile = driver.find_element(By.CSS_SELECTOR, ".cf-turnstile")
+            sitekey = turnstile.get_attribute("data-sitekey")
+            if sitekey:
+                token = solve_turnstile(sitekey, driver.current_url)
+                if token:
+                    driver.execute_script(f"document.querySelector('[name=cf-turnstile-response]').value = '{token}';")
+        except:
+            print("ℹ️ Nessun captcha Turnstile trovato, procedo...")
+        
+        # Invio modulo
         submit_btn = driver.find_element(By.XPATH, "//input[@type='submit']")
         submit_btn.click()
         
         time.sleep(3)
+        
+        # Verifica login
         if "dashboard" in driver.current_url or "member" in driver.current_url:
             cookies = driver.get_cookies()
             user_id = None
@@ -66,13 +109,15 @@ def login():
                     sesids = c['value']
             print(f"🎉 Login OK! user_id={user_id}, sesids={sesids}")
             
-            # ✅ CREA LA DIRECTORY PRIMA DI SALVARE
+            # ✅ SALVATAGGIO COOKIES CON CREAZIONE DIRECTORY
             os.makedirs("/tmp/easyhits4u", exist_ok=True)
             with open("/tmp/easyhits4u/cookies.json", "w") as f:
                 json.dump(cookies, f)
-            print("💾 Cookies salvati")
+            print("💾 Cookies salvati in /tmp/easyhits4u/cookies.json")
         else:
-            print("❌ Login fallito")
+            print("❌ Login fallito, verificare credenziali o captcha")
+            print(f"   URL corrente: {driver.current_url}")
+            
     except Exception as e:
         print(f"❌ Errore: {e}")
     finally:
