@@ -6,7 +6,6 @@ import json
 import time
 import os
 from datetime import datetime
-from pathlib import Path
 
 # ==================== CHIAVI VALIDE (60) ====================
 VALID_KEYS = [
@@ -74,9 +73,9 @@ VALID_KEYS = [
 
 BROWSERLESS_URL = "https://production-sfo.browserless.io/chrome/bql"
 
-# Account EasyHits4U (da modificare con le tue credenziali)
-EASYHITS_EMAIL = "clarabassoni2+borevunechi@gmail.com"
-EASYHITS_PASSWORD = "DF45$!daza"
+# CREDENZIALI AGGIORNATE
+EASYHITS_EMAIL = "sandrominori50+giorgiofaggiolini@gmail.com"
+EASYHITS_PASSWORD = "DDnmVV45!!"
 REFERER_URL = "https://www.easyhits4u.com/?ref=nicolacaporale"
 
 def log(msg):
@@ -163,7 +162,7 @@ def main():
         cookies = login_with_token(token)
         if cookies:
             log(f"🎉 Login OK! user_id={cookies.get('user_id')}, sesids={cookies.get('sesids')}")
-            # Salva i cookie per usarli nello script di surf
+            os.makedirs("/tmp/easyhits4u", exist_ok=True)
             with open("/tmp/easyhits4u/cookies.json", "w") as f:
                 json.dump(cookies, f)
             return
